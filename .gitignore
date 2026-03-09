@@ -1,0 +1,12 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+secret.env
+
+# Uploaded files (صور وصوت)
+uploads/
+
+# Logs
+*.log
