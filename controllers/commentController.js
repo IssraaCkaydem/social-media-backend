@@ -85,7 +85,3 @@ exports.deleteComment = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-<<<<<<< HEAD
-
-=======
->>>>>>> 487d287d610ecf32cf17e5481b47ab57ccc35bde

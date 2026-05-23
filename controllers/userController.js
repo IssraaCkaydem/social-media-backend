@@ -41,8 +41,6 @@ exports.updateProfile = async (req, res) => {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
-<<<<<<< HEAD
-
 
 
 
@@ -51,12 +49,13 @@ exports.updateProfile = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).select("name profilePic");
+    const user = await User.findById(req.params.userId)
+      .select("name profilePic isOnline lastSeen");
+    
     if (!user) return res.status(404).json({ msg: "User not found" });
+    
     res.json(user);
   } catch (err) {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
-=======
->>>>>>> 487d287d610ecf32cf17e5481b47ab57ccc35bde

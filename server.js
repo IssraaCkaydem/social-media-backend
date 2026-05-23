@@ -1,19 +1,21 @@
-<<<<<<< HEAD
 
-// ================= server.js =================
+
 const express = require("express");
-const app = express();
 const http = require("http");
 const { Server } = require("socket.io");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const path = require("path");
 require("dotenv").config({ path: "./secret.env" });
 
-// ================= Middleware =================
-app.use(express.json());
-const cookieParser = require("cookie-parser");
-app.use(cookieParser());
+const User = require("./models/User"); 
 
-const cors = require("cors");
+const app = express();
+
+// ================= 1. MIDDLEWARE =================
+app.use(express.json());
+app.use(cookieParser());
 app.use(
   cors({
     origin: "http://localhost:3000",
@@ -21,31 +23,10 @@ app.use(
   })
 );
 
-// ================= Database =================
-const mongoose = require("mongoose");
-
-mongoose
-  .connect(
-    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mcrtib2.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`
-  )
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.log("❌ Mongo error:", err));
-
-// ================= Routes =================
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/posts", require("./routes/postRoutes"));
-app.use("/api/follow", require("./routes/followRoutes"));
-app.use("/api/users2", require("./routes/userRouteV2"));
-app.use("/api/comments", require("./routes/commentRoutes"));
-app.use("/api/messages", require("./routes/message.routes"));
-app.use("/api", require("./routes/uploadRoutes"));
-
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ================= Server + Socket =================
+// ================= 2. SERVER & SOCKET SETUP =================
 const server = http.createServer(app);
-
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
@@ -53,154 +34,178 @@ const io = new Server(server, {
   },
 });
 
-// 🔥 لحتى نستخدم io داخل controller
 app.set("io", io);
 
-// ================= Socket Logic =================
-io.on("connection", (socket) => {
-  console.log("🟢 Connected:", socket.id);
+// ================= 3. ROUTES =================
+app.use("/api/stories", require("./routes/storyRoutes"));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/users", require("./routes/userRoutes"));
+app.use("/api/posts", require("./routes/postRoutes"));
+app.use("/api/follow", require("./routes/followRoutes"));
+app.use("/api/comments", require("./routes/commentRoutes"));
+app.use("/api/messages", require("./routes/message.routes"));
+app.use("/api/upload", require("./routes/uploadRoutes"));
+app.use("/api/users2", require("./routes/userRouteV2"));
 
-  // ================= JOIN ROOM =================
-  socket.on("join", (userId) => {
+// ================= 4. DATABASE CONNECTION =================
+
+/*
+mongoose
+  .connect(
+    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mcrtib2.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`
+  )
+*/
+
+
+mongoose
+  .connect("mongodb://127.0.0.1:27017/mydb")
+  .then(async () => {
+    console.log("✅ MongoDB Connected");
+    await User.updateMany({}, { isOnline: false });
+    console.log("✅ All users status reset to offline.");
+  })
+  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+
+// ================= 5. SOCKET EVENTS & DATA =================
+let onlineUsers = new Map(); 
+const roomUsers = new Map(); 
+const activeWatchSessions = new Map();
+
+io.on("connection", (socket) => {
+  console.log("🟢 New Connection:", socket.id);
+
+  socket.on("join", async (userId) => {
+    if (!userId) return;
     socket.join(userId);
-    console.log(`👤 User ${userId} joined room`);
+    socket.userId = userId;
+    
+    onlineUsers.set(userId, socket.id);
+    
+    try {
+      await User.findByIdAndUpdate(userId, { isOnline: true });
+
+      socket.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
+
+      socket.broadcast.emit("userStatusChanged", { userId, isOnline: true });
+      
+      console.log(`👤 User ${userId} is ONLINE`);
+    } catch (err) {
+      console.error("Error updating online status:", err);
+    }
   });
 
-  // ================= SEND MESSAGE =================
+  // 
+  // ================= 🔥 START: GROUP WATCH EVENTS =================
+socket.on("sendGroupWatchInvite", ({ senderId, receiverId, postId, senderName, roomId }) => {
+  
+  console.log(`📨 Sending group invite for room: ${roomId}`);
 
-  // ================= SEND MESSAGE =================
-socket.on("sendMessage", async (msg) => {
-
-  // ✅ لا تحفظ بالـ DB هون
-  // الحفظ صار عبر REST controller فقط
-
-  io.to(msg.receiverId).emit("newMessage", msg);
-
-  // optional: إذا بدك تبعت unread count
-  const messageService = require("./services/message.service");
-  const unreadCount = await messageService.getUnreadCount(msg.receiverId);
-  io.to(msg.receiverId).emit("unreadCount", unreadCount);
+  io.to(receiverId).emit("receiveGroupWatchInvite", {
+    senderId,
+    senderName,
+    postId,
+    roomId: roomId 
+  });
 });
 
-  // ================= DELETE MESSAGE =================
-  socket.on("deleteMessage", ({ messageId, senderId, receiverId }) => {
-    io.to(receiverId).emit("deleteMessage", messageId);
-    io.to(senderId).emit("deleteMessage", messageId);
+  socket.on("acceptGroupWatchInvite", ({ senderId, receiverId, postId, roomId }) => {
+    activeWatchSessions.set(roomId, { senderId, receiverId, postId, startTime: new Date() });
+    io.to(senderId).emit("inviteAccepted", { roomId, postId });
   });
 
-  // ================= TYPING =================
+  socket.on("joinWatchRoom", ({ roomId, userId, userName, profilePic }) => { 
+    console.log(`📡 [SERVER] Join room: ${roomId} by ${userName}`);
+    socket.join(roomId);
+    socket.currentRoom = roomId;
+
+    if (!roomUsers.has(roomId)) roomUsers.set(roomId, []);
+    
+    const usersInRoom = roomUsers.get(roomId);
+    
+    const userIndex = usersInRoom.findIndex(u => u.userId === userId);
+
+    if (userIndex === -1) {
+      usersInRoom.push({ userId, userName, profilePic, socketId: socket.id });
+    } else {
+      usersInRoom[userIndex].socketId = socket.id;
+      usersInRoom[userIndex].profilePic = profilePic;
+    }
+
+    io.to(roomId).emit("roomUsersUpdate", usersInRoom);
+});
+
+  socket.on("sendLiveComment", (data) => {
+    if (data.roomId) {
+      io.to(data.roomId).emit("receiveLiveComment", {
+        ...data,
+        createdAt: new Date()
+      });
+    }
+  });
+
+  socket.on("typingLiveComment", ({ roomId, userName }) => {
+    socket.to(roomId).emit("userTyping", { userName });
+  });
+
+  socket.on("sendLiveReaction", ({ roomId, senderId, emoji }) => {
+    io.to(roomId).emit("receiveLiveReaction", { senderId, emoji });
+  });
+
+  socket.on("leaveWatchSession", ({ roomId, userId }) => {
+    socket.leave(roomId);
+    if (roomUsers.has(roomId)) {
+      const updated = roomUsers.get(roomId).filter(u => u.userId !== userId);
+      roomUsers.set(roomId, updated);
+      io.to(roomId).emit("roomUsersUpdate", updated);
+    }
+  });
+
+  // ================= 💬 START: DIRECT MESSAGING =================
+  socket.on("sendMessage", (msg) => {
+    if (msg.receiverId) {
+      io.to(msg.receiverId).emit("newMessage", msg);
+    }
+  });
+
   socket.on("typing", ({ senderId, receiverId }) => {
-    io.to(receiverId).emit("typing", senderId);
+    io.to(receiverId).emit("typing", { senderId });
   });
 
   socket.on("stopTyping", ({ senderId, receiverId }) => {
-    io.to(receiverId).emit("stopTyping", senderId);
+    io.to(receiverId).emit("stopTyping", { senderId });
   });
 
-  // ================= 🎤 RECORDING =================
   socket.on("recording", ({ senderId, receiverId }) => {
-    io.to(receiverId).emit("recording", senderId);
+    io.to(receiverId).emit("recording", { senderId });
   });
 
-  socket.on("stopRecording", ({ senderId, receiverId }) => {
-    io.to(receiverId).emit("stopRecording", senderId);
+  socket.on("messagesSeen", ({ senderId, receiverId }) => {
+    io.to(senderId).emit("messagesSeen", { readerId: receiverId });
   });
 
-  // ================= 🔵 SEEN EVENT + UNREAD COUNT =================
-  socket.on("messagesSeen", async ({ senderId, receiverId }) => {
-    const messageService = require("./services/message.service");
+  // ================= 🛑 DISCONNECT =================
+  socket.on("disconnect", async () => {
+    const userId = socket.userId;
+    const roomId = socket.currentRoom;
 
-    // تحديث الرسائل كمقروءة
-    await messageService.markMessagesAsSeen(receiverId, senderId);
+    if (roomId && roomUsers.has(roomId)) {
+      const updated = roomUsers.get(roomId).filter(u => u.socketId !== socket.id);
+      roomUsers.set(roomId, updated);
+      io.to(roomId).emit("roomUsersUpdate", updated);
+    }
 
-    // جلب عدد الرسائل غير المقروءة بعد التحديث
-    const unreadCount = await messageService.getUnreadCount(senderId);
-
-    // إرسال عدد الرسائل غير المقروءة للـ sender
-    io.to(senderId).emit("unreadCount", unreadCount);
-
-    // إعلام receiver أن الرسائل تمت قراءتها
-    io.to(receiverId).emit("messagesSeen", { seenBy: receiverId });
-  });
-
-  // ================= DISCONNECT =================
-  socket.on("disconnect", () => {
-    console.log("🔴 Disconnected:", socket.id);
+    if (userId) {
+      onlineUsers.delete(userId);
+      try {
+        await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
+        io.emit("userStatusChanged", { userId, isOnline: false });
+        console.log(`🔴 User ${userId} is OFFLINE`);
+      } catch (err) { console.error(err); }
+    }
   });
 });
 
-// ================= Start =================
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
-
-=======
-const express=require("express")
-const app=express()
-
-
-app.use(express.json());
-
-
-
-const cookieParser = require("cookie-parser");
-app.use(cookieParser());
-
-
-
-const cors = require('cors');
-
-app.use(cors({
-  origin: /localhost:\d{4}/,  
-  credentials: true           
-}));
-
-
-
-
-const mongoose = require("mongoose");
-require('dotenv').config({ path: './secret.env' });
-const dbUser = process.env.DB_USER;
-const dbPass = process.env.DB_PASS;
-const dbName = process.env.DB_NAME;
-mongoose.connect(`mongodb+srv://${dbUser}:${dbPass}@cluster0.mcrtib2.mongodb.net/${dbName}?retryWrites=true&w=majority`)
-.then(() => console.log("Connected successfully"))
-.catch((error) => console.log("Error with connection", error));
-
-
-
-
-const authRoutes = require('./routes/auth');
-app.use('/api/auth', authRoutes);
-
-const userRoutes = require("./routes/userRoutes");
-app.use("/api/users", userRoutes);
-
-const postRoutes = require("./routes/postRoutes");
-app.use("/api/posts", postRoutes);
-
-
-
-
-const uploadRoutes = require("./routes/uploadRoutes");
-app.use("/api", uploadRoutes);
-
-const followRoutes=require("./routes/followRoutes")
-app.use("/api/follow", followRoutes);
-
-
-const path = require("path");
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-const userRoutes2=require("./routes/userRouteV2");
-app.use("/api/users2", userRoutes2);
-
-const commentRoutes = require("./routes/commentRoutes");
-app.use("/api/comments", commentRoutes);
-
-
-
-const PORT= process.env.PORT || 4000;
-app.listen(PORT,()=>{console.log(`Server is running on port ${PORT} `)})
->>>>>>> 487d287d610ecf32cf17e5481b47ab57ccc35bde

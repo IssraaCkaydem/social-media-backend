@@ -1,42 +1,30 @@
+
+
+
 const router = require("express").Router();
 const auth = require("../middleware/authMiddleware").verifyToken;
-const messageController = require("../controllers/message.controller");
-const uploadVoice = require("../middleware/uploadVoice");
+const c = require("../controllers/message.controller");
+const uploadVoice = require("../middleware/uploadVoice"); 
+const uploadImage = require("../middleware/uploadImage"); 
+// ================= SEND ROUTES =================
 
-// =======================
-// SEND TEXT MESSAGE
-// =======================
-router.post("/", auth, messageController.sendMessage);
+router.post("/", auth, c.sendMessage);
 
-// =======================
-// SEND VOICE MESSAGE
-// =======================
-router.post(
-  "/voice",
-  auth,
-  uploadVoice.single("voice"),
-  messageController.sendVoiceMessage
-);
+router.post("/voice", auth, uploadVoice.single("voice"), c.sendVoiceMessage);
 
-// =======================
-// DELETE MESSAGE
-// =======================
-router.delete("/me/:messageId", auth, messageController.deleteMessageForMe);
-router.delete(
-  "/everyone/:messageId",
-  auth,
-  messageController.deleteMessageForEveryone
-);
+router.post("/image", auth, uploadImage.single("image"), c.sendImageMessage); 
+router.post("/story-reply", auth, c.replyToStory);
+// ================= GET ROUTES =================
+router.get("/users", auth, c.getUsersWithMessages);
+router.get("/inbox-badge", auth, c.getInboxBadgeCount);
 
-// =======================
-// INBOX
-// =======================
-router.get("/users", auth, messageController.getUsersWithMessages);
-router.get("/:userId", auth, messageController.getMessagesWithUser);
+// CHAT
+router.get("/:userId", auth, c.getMessagesWithUser);
+router.put("/seen/:userId", auth, c.markAsSeen);
 
-// =======================
-// 🔥 MARK AS SEEN
-// =======================
-router.put("/seen/:userId", auth, messageController.markAsSeen);
+// ================= DELETE ROUTES =================
+router.delete("/me/:messageId", auth, c.deleteMessageForMe);
+router.delete("/everyone/:messageId", auth, c.deleteMessageForEveryone);
+router.delete("/clear/:userId", auth, c.clearChatForMe);
 
 module.exports = router;

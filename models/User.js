@@ -47,6 +47,8 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
 
+    isOnline: { type: Boolean, default: false },
+lastSeen: { type: Date, default: Date.now },
     // ===== 🔐 حماية تسجيل الدخول =====
 
     loginAttempts: {

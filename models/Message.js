@@ -1,4 +1,5 @@
 
+
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -14,28 +15,39 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 👇 نوع الرسالة
     type: {
       type: String,
-      enum: ["text", "voice"],
+      enum: ["text", "voice", "image", "story_reply"], 
       default: "text",
     },
 
-    // نص (بس إذا type = text)
     text: {
       type: String,
       default: "",
     },
 
-    // صوت (بس إذا type = voice)
+    storyId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "Story" 
+    },
+    storySnapshot: { 
+      type: String, 
+      default: "" 
+    },
+
     audioUrl: {
       type: String,
       default: "",
     },
 
     audioDuration: {
-      type: Number, // بالثواني
+      type: Number,
       default: 0,
+    },
+
+    imageUrl: {
+      type: String,
+      default: "",
     },
 
     seen: {

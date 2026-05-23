@@ -7,13 +7,12 @@ async function loginRateLimiter(req, res, next) {
   const user = await User.findOne({ email });
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-  // تحقق من البلوك قبل أي محاولة login
   if (user.blockExpires && user.blockExpires > new Date()) {
     const remaining = Math.ceil((user.blockExpires - new Date()) / 1000 / 60);
     return res.status(403).json({ message: `Account locked. Try again in ${remaining} minutes.` });
   }
 
-  req.userRecord = user; // نرسل user للـ controller
+  req.userRecord = user; 
   next();
 }
 

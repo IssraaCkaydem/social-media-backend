@@ -13,7 +13,6 @@ const cookieOptions = {
   path: "/",
 };
 
-
 // ===== REGISTER =====
 exports.registerUser = async (req, res) => {
   const { name, email, password } = req.body;

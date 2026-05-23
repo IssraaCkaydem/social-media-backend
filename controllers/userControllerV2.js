@@ -2,10 +2,11 @@ const User = require("../models/User");
 const Post = require("../models/Post");
 
 
+
 exports.getUserById = async (req, res) => {
   try {
     const targetUser = await User.findById(req.params.id)
-      .select("name email profilePic followers following");
+      .select("name email profilePic followers following isOnline lastSeen");
 
     if (!targetUser) {
       return res.status(404).json({ msg: "User not found" });
@@ -24,7 +25,7 @@ exports.getUserById = async (req, res) => {
       .sort({ createdAt: -1 })
       .populate("userId", "name profilePic")
       .populate("likes", "name profilePic")
-        .populate("comments.user", "name profilePic"); 
+      .populate("comments.user", "name profilePic"); 
 
     const postsWithLikesUsers = posts.map(post => ({
       ...post.toObject(),
@@ -32,7 +33,7 @@ exports.getUserById = async (req, res) => {
     }));
 
     res.status(200).json({
-      user: targetUser,
+      user: targetUser, 
       isFollowing,
       postsCount: postsWithLikesUsers.length,
       posts: postsWithLikesUsers,
@@ -45,9 +46,6 @@ exports.getUserById = async (req, res) => {
 
 
 
-
-
-// Search users
 exports.searchUsers= async (req, res) => {
   try {
     const name = req.query.name;

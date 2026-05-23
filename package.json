@@ -15,7 +15,6 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-<<<<<<< HEAD
     "express-rate-limit": "^8.2.1",
     "express-validator": "^7.3.0",
     "jsonwebtoken": "^9.0.2",
@@ -24,11 +23,5 @@
     "music-metadata": "^11.12.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
-=======
-    "express-validator": "^7.3.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.3",
-    "multer": "^2.0.2"
->>>>>>> 487d287d610ecf32cf17e5481b47ab57ccc35bde
   }
 }
